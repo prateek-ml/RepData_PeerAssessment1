@@ -7,19 +7,86 @@ output:
 
 
 ## Loading and preprocessing the data
+```{r Load data}
+library(ggplot2)
+library(scales)
 
+unzip(zipfile="activity.zip")
+dataset <- read.csv('activity.csv')
+str(dataset)
+
+dataset$date <- as.Date(dataset$date)
+summary(dataset)
+```
 
 
 ## What is mean total number of steps taken per day?
+```{r Mean Total steps per day}
+### Calcuating total steps taken per day
+tot_steps <- aggregate(dataset$steps, list(dataset$date), sum)
+tot_steps <- as.data.frame(tot_steps)
+names(tot_steps) <- c("Date", "Steps")
 
+head(tot_steps)
+
+### Making a histogram of total number of steps per day
+ggplot(tot_steps, aes(x = Date, y = Steps)) + geom_bar(stat = 'identity') + scale_x_date(breaks = '1 day', limits = c(min(tot_steps$Date), max(tot_steps$Date)), labels = date_format("%d-%m"))+ theme_bw() + theme(axis.text.x = element_text(angle=90))
+
+### Calculating the mean and median steps a day
+mean_steps <- mean(tot_steps$Steps, na.rm = TRUE)
+median_steps <- median(tot_steps$Steps, na.rm = TRUE)
+```
+__Mean : `r mean_steps`__
+__Median : `r median_steps`__
 
 
 ## What is the average daily activity pattern?
+```{r Daily Activity Pattern}
+pattern <- aggregate(steps~interval, data = dataset, FUN = mean)
+maxsteps <- max(pattern$steps)
+maxinterval <- pattern[pattern$steps == maxsteps, "interval"]
 
+ggplot(data = pattern, aes(x = interval, y=steps)) + geom_point() + labs(x = 'Time Interval', y='Avergae Steps', title = 'Average Daily Pattern') + theme_bw()
+```
+__The maximum average number of steps (`r maxsteps`) are taken in the interval `r maxinterval`.__
 
 
 ## Imputing missing values
 
+We have `r sum(!complete.cases(dataset))` records with missing values. We have been suggested two ways to replace missing values
 
+1. Replace missing step data for an interval with daily average for that interval
+2. Replace missing step data for an interval with that day's average
+
+Lets use the interval average over all days to replace a missing steps count for an interval. In other words, lets use method 1.
+```{r Missing Values}
+missing_vals <- is.na(dataset$steps)
+missing_intervals <- dataset$interval[missing_vals]
+input_steps <- pattern$steps[match(missing_intervals, pattern$interval)]
+new_dataset <- dataset
+new_dataset$steps[missing_vals] <- input_steps
+```
+
+Lets recalculate the mean and median with the corrected data.
+```{r Corrected Data}
+corrected_dailysteps <- aggregate(steps~date, new_dataset, sum)
+new_mean <- mean(corrected_dailysteps$steps)
+new_median <- median(corrected_dailysteps$steps)
+ggplot(corrected_dailysteps, aes(x = date, y = steps)) + geom_bar(stat = 'identity') + scale_x_date(breaks = '1 day', limits = c(min(corrected_dailysteps$date), max(corrected_dailysteps$date)), labels = date_format("%d-%m"))+ theme_bw() + theme(axis.text.x = element_text(angle=90))
+```
+__Mean : `r new_mean`__
+
+__Median : `r new_median`__
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r Weekdays vs Weekends}
+new_dataset$day_type = "Weekday"
+weekend <- c("Saturday", "Sunday")
+new_dataset$day_type[weekdays(new_dataset$date) %in% weekend] <- "Weekend"
+new_dataset$day_type <- as.factor(new_dataset$day_type)
+
+corrected_activitypattern <- aggregate(steps~interval+day_type, new_dataset, mean)
+
+ggplot(data = corrected_activitypattern, aes(x = interval, y=steps)) + geom_point() + geom_line() + facet_grid(day_type ~ .)
+```
